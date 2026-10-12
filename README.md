@@ -1,24 +1,44 @@
-# Dijkstra animation — iteration one
+# Dijkstra animation
 
-This scene draws the storyboard's graph and initial priority queue on a black
-background. A starts at distance 0, and B–F start at infinity. The algorithm
-steps will be added in a later iteration.
+The algorithm lives in `src/manimations/dijkstra.py` and has no Manim imports.
 
-Run the scene with:
+```python
+from manimations.dijkstra import dijkstra
 
-```sh
-uv run manim -ql src/manimations/dijkstra.py DijkstraSetup
+graph = {
+    "A": {"B": 7, "C": 3},
+    "B": {},
+    "C": {"B": 1},
+    "D": {},
+}
+distances, previous, steps = dijkstra(graph, "A")
 ```
 
-The video is saved under `media/videos/dijkstra/480p15/`.
+Use adjacency dictionaries with finite, nonnegative weights. Edges are directed;
+add both directions for an undirected graph. Include isolated nodes with `{}`.
+Nodes appearing only as neighbors are also included.
 
-All the scene code is in `src/manimations/dijkstra.py`:
+The result contains:
 
-- `ADJACENCY_LIST` contains the graph's connections and weights. List each edge once.
-- `POSITIONS` sets each node's location to match the storyboard.
-- `START_NODE` is A for this iteration.
-- `DijkstraSetup.construct()` draws the edges, nodes, distances, and queue.
+- `distances`: final shortest distances; unreachable nodes remain `float("inf")`.
+- `previous`: shortest-path predecessors; the start and unreachable nodes have `None`.
+- `steps`: independent snapshots after each reachable node is processed.
 
-To change the graph, edit the adjacency list and positions directly. Include
-an entry in both dictionaries for each node, even if its neighbor dictionary
-is empty. This iteration uses an adjacency list only.
+Each step includes `current`, a full `distances` dictionary, a `visited` set,
+and `updates` with `node`, `old_distance`, `new_distance`, and `from` keys.
+The `queue` is a sorted list of `(distance, node)` pairs for all unvisited nodes,
+including those at infinity, without stale heap entries. Queue ties follow graph
+insertion order; processing ties follow discovery order. Equal-length alternatives
+keep the first predecessor found. Unreachable nodes do not generate steps.
+
+The scene can iterate through `steps`, highlight `current`, animate the edges
+identified by each update's `from` and `node`, and show the snapshot distances,
+queue, and visited nodes. Follow `previous` backward from a reachable target to
+reconstruct its final path.
+
+Run the algorithm tests without installing Manim (PowerShell):
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m unittest discover -s tests -v
+```
