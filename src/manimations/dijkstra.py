@@ -16,6 +16,7 @@ DistanceUpdate = TypedDict(
 
 class DijkstraStep(TypedDict):
     current: str
+    checked_edges: list[tuple[str, str]]
     distances: dict[str, float]
     queue: list[tuple[float, str]]
     visited: set[str]
@@ -64,9 +65,11 @@ def dijkstra(
             continue
         visited.add(current)
         updates: list[DistanceUpdate] = []
+        checked_edges = []
         for neighbor, weight in graph.get(current, {}).items():
             if neighbor in visited:
                 continue
+            checked_edges.append((current, neighbor))
             candidate = distance + weight
             if candidate < distances[neighbor]:
                 updates.append({
@@ -81,6 +84,7 @@ def dijkstra(
 
         steps.append({
             "current": current,
+            "checked_edges": checked_edges,
             "distances": distances.copy(),
             "queue": sorted(
                 [(distances[node], node) for node in nodes if node not in visited],
@@ -118,19 +122,26 @@ ADJACENCY_LIST = {
 # }
 
 START_NODE = "A"
+DESTINATION_NODE = None  # Optional path target.
 GRAPH_WIDTH = 9.7
 GRAPH_HEIGHT = 5.7
 
 
 class DijkstraSetup(Scene):
+    adjacency_list = ADJACENCY_LIST
+    start_node = START_NODE
+    destination_node = DESTINATION_NODE
+
     def construct(self):
         self.camera.background_color = BLACK
+        adjacency_list = self.adjacency_list
+        start_node = self.start_node
 
         # Graph needs a list of node names and a list of connected pairs.
-        vertices = list(ADJACENCY_LIST)
+        vertices = list(adjacency_list)
         edges = []
         edge_weights = {}
-        for node, neighbors in ADJACENCY_LIST.items():
+        for node, neighbors in adjacency_list.items():
             for neighbor, weight in neighbors.items():
                 if neighbor not in vertices:
                     vertices.append(neighbor)
@@ -200,6 +211,7 @@ class DijkstraSetup(Scene):
         weights = VGroup()
         node_labels = VGroup()
         distances = VGroup()
+        distance_texts = {}
         queue = VGroup()
 
         # Circles cover the ends of the lines, and names sit above the circles.
@@ -211,13 +223,14 @@ class DijkstraSetup(Scene):
             name_text.set_z_index(2)
             node_labels.add(name_text)
 
-            distance = "0" if node == START_NODE else "∞"
+            distance = "0" if node == start_node else "∞"
             distance_text = Text(distance, font_size=16, color=BLUE_B)
             if circle.get_center()[1] > graph.get_center()[1]:
                 distance_text.next_to(circle, UP, buff=0.2)
             else:
                 distance_text.next_to(circle, DOWN, buff=0.2)
             distances.add(distance_text)
+            distance_texts[node] = distance_text
 
         # Place each weight beside its edge, using the generated positions.
         for pair, weight in edge_weights.items():
@@ -238,8 +251,8 @@ class DijkstraSetup(Scene):
         row_spacing = min(0.3, 5.4 / len(vertices))
         for index, node in enumerate(vertices):
             y = 2.65 - index * row_spacing
-            distance = "0" if node == START_NODE else "∞"
-            color = GOLD if node == START_NODE else GRAY
+            distance = "0" if node == start_node else "∞"
+            color = GOLD if node == start_node else GRAY
 
             name_text = Text(node, font_size=17, color=color)
             name_text.move_to([-6.5, y, 0])
@@ -247,7 +260,7 @@ class DijkstraSetup(Scene):
             distance_text.move_to([-5.3, y, 0])
             queue.add(name_text, distance_text)
 
-            if node == START_NODE:
+            if node == start_node:
                 marker = Dot([-6.68, y, 0], radius=0.025, color=GOLD)
                 queue.add(marker)
 
@@ -262,3 +275,47 @@ class DijkstraSetup(Scene):
         self.play(Create(graph), run_time=1.1)
         self.play(FadeIn(weights), FadeIn(node_labels), FadeIn(distances), run_time=1)
         self.wait(2)
+
+        # Add both directions for the undirected graph.
+        algorithm_graph = {node: {} for node in vertices}
+        for (node, neighbor), weight in edge_weights.items():
+            algorithm_graph[node][neighbor] = weight
+            algorithm_graph[neighbor][node] = weight
+        final_distances, previous, steps = dijkstra(algorithm_graph, start_node)
+        self.animate_graph(graph, distance_texts, steps, previous,
+                           final_distances, self.destination_node)
+        self.wait(2)
+
+    def animate_graph(self, graph, distance_texts, steps, previous,
+                      final_distances, destination=None):
+        # Colors: yellow = current, orange = checked edge, green = finished.
+        for step in steps:
+            current = step["current"]
+            self.play(graph.vertices[current].animate.set_stroke(YELLOW), run_time=0.4)
+            updates = {update["node"]: update for update in step["updates"]}
+            for node, neighbor in step["checked_edges"]:
+                pair = (node, neighbor)
+                if pair not in graph.edges:
+                    pair = (neighbor, node)
+                edge = graph.edges[pair]
+                self.play(edge.animate.set_color(ORANGE), run_time=0.3)
+                if neighbor in updates:
+                    old_text = distance_texts[neighbor]
+                    new_text = Text(f'{updates[neighbor]["new_distance"]:g}',
+                                    font_size=16, color=BLUE_B)
+                    new_text.move_to(old_text)
+                    self.play(Transform(old_text, new_text), run_time=0.4)
+                self.play(edge.animate.set_color(GRAY_D), run_time=0.2)
+            self.play(graph.vertices[current].animate.set_stroke(GREEN), run_time=0.3)
+
+        if destination is not None and final_distances[destination] != inf:
+            node = destination
+            self.play(graph.vertices[node].animate.set_stroke(GOLD), run_time=0.3)
+            while previous[node] is not None:
+                parent = previous[node]
+                pair = (parent, node)
+                if pair not in graph.edges:
+                    pair = (node, parent)
+                self.play(graph.edges[pair].animate.set_color(GOLD),
+                          graph.vertices[parent].animate.set_stroke(GOLD), run_time=0.4)
+                node = parent
