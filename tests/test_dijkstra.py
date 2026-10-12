@@ -42,6 +42,14 @@ class DijkstraTests(unittest.TestCase):
         self.assertEqual(previous, {"A": None})
         self.assertEqual(steps[0]["queue"], [])
 
+    def test_checked_edges_include_unsuccessful_relaxations(self):
+        graph = {"A": {"B": 1, "C": 2}, "B": {"A": 1, "C": 5}, "C": {}}
+        _, _, steps = dijkstra(graph, "A")
+        self.assertEqual(steps[0]["checked_edges"], [("A", "B"), ("A", "C")])
+        self.assertEqual(steps[1]["checked_edges"], [("B", "C")])
+        self.assertEqual(steps[1]["updates"], [])
+        self.assertEqual(steps[2]["checked_edges"], [])
+
     def test_invalid_inputs(self):
         for weight in (-1, inf, -inf, float("nan")):
             with self.subTest(weight=weight), self.assertRaises(ValueError):
